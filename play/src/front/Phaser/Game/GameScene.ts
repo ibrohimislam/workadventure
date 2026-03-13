@@ -608,7 +608,16 @@ export class GameScene extends DirtyScene {
         }
         const mapStoragePath = `${prefix}${ENTITIES_FOLDER_PATH_NO_PREFIX}/${ENTITY_COLLECTION_FILE}`;
         const absoluteWamUrl = new URL(this.wamUrlFile ?? "", window.location.href);
-        return new URL(mapStoragePath, absoluteWamUrl).toString();
+        const result = new URL(mapStoragePath, absoluteWamUrl).toString();
+        console.log("[GameScene] getCustomEntityCollectionUrl:", {
+            PUBLIC_MAP_STORAGE_PREFIX,
+            prefix,
+            mapStoragePath,
+            wamUrlFile: this.wamUrlFile,
+            absoluteWamUrl: absoluteWamUrl.toString(),
+            result,
+        });
+        return result;
     }
 
     //hook initialisation
@@ -1709,6 +1718,9 @@ export class GameScene extends DirtyScene {
             })
         );
 
+        console.log("[GameScene] loadEntityCollections - WAM entityCollections:", this.wamFile.entityCollections);
+        console.log("[GameScene] loadEntityCollections - Room entityCollectionsUrls:", this._room.entityCollectionsUrls);
+
         const adminEntityCollectionUrls = this._room.entityCollectionsUrls;
         if (adminEntityCollectionUrls) {
             const existingUrls = new Set(collectionDescriptors.map((d) => d.url));
@@ -1720,6 +1732,8 @@ export class GameScene extends DirtyScene {
         }
 
         collectionDescriptors.push({ url: customEntityCollectionUrl, type: "Custom" });
+
+        console.log("[GameScene] loadEntityCollections - Final descriptors:", collectionDescriptors);
 
         this.entitiesCollectionsManager.loadCollections(collectionDescriptors);
     }

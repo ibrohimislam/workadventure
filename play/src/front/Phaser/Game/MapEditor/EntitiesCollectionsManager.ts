@@ -12,7 +12,9 @@ import { asError } from "catch-unknown";
 import { EntityVariant } from "./Entities/EntityVariant";
 
 export class EntitiesCollectionsManager {
-    private entitiesPrefabsMapPromise!: Promise<Map<string, EntityPrefab>>;
+    private entitiesPrefabsMapPromise: Promise<Map<string, EntityPrefab>> = Promise.resolve(
+        new Map<string, EntityPrefab>()
+    );
     private tags: string[] = [];
 
     private currentCollection: EntityCollection = { collectionName: "All Object Collection", collection: [], tags: [] };
@@ -51,6 +53,12 @@ export class EntitiesCollectionsManager {
     }
 
     public loadCollections(collectionDescriptors: { url: string; type: EntityPrefabType }[]): void {
+        console.log(
+            "[EntitiesCollectionsManager] loadCollections called with",
+            collectionDescriptors.length,
+            "descriptors:",
+            collectionDescriptors.map((d) => `${d.url} (${d.type})`)
+        );
         this.entitiesPrefabsMapPromise = new Promise<Map<string, EntityPrefab>>((resolve, reject) => {
             const entityCollections: { collection: EntityCollection; url: string }[] = [];
             const fetchUrlPromises: Promise<EntityCollectionRaw>[] = [];
@@ -59,7 +67,6 @@ export class EntitiesCollectionsManager {
                 fetchUrlPromises.push(promise);
             }
 
-            //TODO check tagSet and this.currentCollection
             Promise.allSettled(fetchUrlPromises)
                 .then((promises) => {
                     for (let i = 0; i < promises.length; i++) {
@@ -69,15 +76,30 @@ export class EntitiesCollectionsManager {
                             let entityCollectionRaw = promise.value;
                             try {
                                 entityCollectionRaw = entitiesFileMigration.migrate(entityCollectionRaw);
+                                const parsed = this.parseRawCollection(entityCollectionRaw, descriptor.type);
+                                console.log(
+                                    "[EntitiesCollectionsManager] Successfully loaded collection from",
+                                    descriptor.url,
+                                    "- entities:",
+                                    parsed.collection.length
+                                );
                                 entityCollections.push({
-                                    collection: this.parseRawCollection(entityCollectionRaw, descriptor.type),
+                                    collection: parsed,
                                     url: descriptor.url,
                                 });
                             } catch (error) {
-                                console.error("Error while parsing entity collection", descriptor.url, error);
+                                console.error(
+                                    "[EntitiesCollectionsManager] Error while parsing entity collection",
+                                    descriptor.url,
+                                    error
+                                );
                             }
                         } else {
-                            console.error("Error while loading entity collection", descriptor.url, promise.reason);
+                            console.error(
+                                "[EntitiesCollectionsManager] Error while loading entity collection",
+                                descriptor.url,
+                                promise.reason
+                            );
                         }
                     }
 
@@ -103,6 +125,10 @@ export class EntitiesCollectionsManager {
                         tags.sort();
                         this.tags = tags;
                     }
+                    console.log(
+                        "[EntitiesCollectionsManager] Total entities loaded:",
+                        this.currentCollection.collection.length
+                    );
                     this.entitiesPrefabsStore.set(this.currentCollection.collection);
 
                     const prefabsMap = new Map<string, EntityPrefab>();
@@ -112,13 +138,20 @@ export class EntitiesCollectionsManager {
                     resolve(prefabsMap);
                 })
                 .catch((error) => {
-                    console.error(error);
+                    console.error("[EntitiesCollectionsManager] loadCollections failed:", error);
                     reject(error instanceof Error ? error : new Error(JSON.stringify(error)));
                 });
         });
     }
 
     public addUploadedEntity(uploadedEntity: EntityRawPrefab, customEntityCollectionUrl: string) {
+        console.log(
+            "[EntitiesCollectionsManager] addUploadedEntity called",
+            "customEntityCollectionUrl:",
+            customEntityCollectionUrl,
+            "entity:",
+            uploadedEntity.id
+        );
         const uploadedEntityPrefab: EntityPrefab = {
             ...this.parseRawEntityPrefab("custom entities", uploadedEntity, "Custom"),
             imagePath: new URL(uploadedEntity.imagePath, customEntityCollectionUrl).toString(),
@@ -126,14 +159,15 @@ export class EntitiesCollectionsManager {
         this.currentCollection.collection.push(uploadedEntityPrefab);
 
         this.entitiesPrefabsStore.update((currentEntitiesPrefabs) => [...currentEntitiesPrefabs, uploadedEntityPrefab]);
+        const previousPromise = this.entitiesPrefabsMapPromise;
         this.entitiesPrefabsMapPromise = new Promise<Map<string, EntityPrefab>>((resolve, reject) => {
-            this.entitiesPrefabsMapPromise
+            previousPromise
                 .then((existingEntitiesPrefabsMap) => {
                     existingEntitiesPrefabsMap.set(uploadedEntityPrefab.id, uploadedEntityPrefab);
                     resolve(existingEntitiesPrefabsMap);
                 })
                 .catch((error) => {
-                    console.error(error);
+                    console.error("[EntitiesCollectionsManager] addUploadedEntity chain error:", error);
                     reject(asError(error));
                 });
         });
@@ -159,8 +193,9 @@ export class EntitiesCollectionsManager {
             }
             return currentEntitiesPrefabs;
         });
+        const previousPromise = this.entitiesPrefabsMapPromise;
         this.entitiesPrefabsMapPromise = new Promise<Map<string, EntityPrefab>>((resolve, reject) => {
-            this.entitiesPrefabsMapPromise
+            previousPromise
                 .then((existingEntitiesPrefabsMap) => {
                     const entity = existingEntitiesPrefabsMap.get(id);
                     if (entity) {
@@ -175,7 +210,7 @@ export class EntitiesCollectionsManager {
                     resolve(existingEntitiesPrefabsMap);
                 })
                 .catch((error) => {
-                    console.error(error);
+                    console.error("[EntitiesCollectionsManager] modifyCustomEntity chain error:", error);
                     reject(asError(error));
                 });
         });
@@ -185,24 +220,34 @@ export class EntitiesCollectionsManager {
         this.entitiesPrefabsStore.update((currentEntitiesPrefabs) => {
             return currentEntitiesPrefabs.filter((entityPrefab) => entityPrefab.id !== id);
         });
+        const previousPromise = this.entitiesPrefabsMapPromise;
         this.entitiesPrefabsMapPromise = new Promise<Map<string, EntityPrefab>>((resolve, reject) => {
-            this.entitiesPrefabsMapPromise
+            previousPromise
                 .then((existingEntitiesPrefabsMap) => {
                     existingEntitiesPrefabsMap.delete(id);
                     resolve(existingEntitiesPrefabsMap);
                 })
                 .catch((error) => {
-                    console.error(error);
+                    console.error("[EntitiesCollectionsManager] deleteCustomEntity chain error:", error);
                     reject(asError(error));
                 });
         });
     }
 
     private async fetchRawCollection(url: string): Promise<EntityCollectionRaw> {
+        console.log("[EntitiesCollectionsManager] Fetching collection from:", url);
         const response = await fetch(url);
         if (!response.ok) {
-            throw new Error(`Failed to fetch ${url}: ${response.statusText}`);
+            console.error(
+                "[EntitiesCollectionsManager] Fetch failed for",
+                url,
+                "- status:",
+                response.status,
+                response.statusText
+            );
+            throw new Error(`Failed to fetch ${url}: ${response.status} ${response.statusText}`);
         }
+        console.log("[EntitiesCollectionsManager] Fetch succeeded for", url);
         return response.json();
     }
 
