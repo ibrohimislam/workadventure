@@ -299,7 +299,8 @@ export class Room {
         if (!mapStoragePath.endsWith("/")) {
             mapStoragePath += "/";
         }
-        return new URL(mapStoragePath, this._wamUrl);
+        const absoluteWamUrl = new URL(this._wamUrl, window.location.href);
+        return new URL(mapStoragePath, absoluteWamUrl);
     }
 
     get authenticationMandatory(): boolean {
